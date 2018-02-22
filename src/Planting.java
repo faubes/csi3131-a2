@@ -4,9 +4,6 @@
 // The Planting Synchronization Problem
 //
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Random;
 import java.util.concurrent.Semaphore;
 
 
@@ -33,32 +30,16 @@ public class Planting {
             prof.join();
         } catch (InterruptedException e) {
         }
-        ;
         // Terminate the TA and Student Threads
         ta.interrupt();
         stdnt.interrupt();
+
+        System.out.println("Professor: We dug a total of : " + ta.getHoleDug() + " holes.");
+        System.out.println("Professor: We planted a total of : " + ta.getHolePlanted() + " seeds.");
+        System.out.println("Professor: We filled a total of : " + ta.getHoleFilled() + " holes.");
     }
 }
 
-//class Hole {
-//	public enum HoleState {DUG, SEEDED, FILLED}
-//	private HoleState state;
-//	Hole() {
-//		state = HoleState.DUG;
-//	}
-//	void setState(HoleState hs) {
-//		state = hs;
-//	}
-//	HoleState getState() { return state; }
-//
-//	void seed() { setState(HoleState.SEEDED); }
-//
-//	void fill() { setState(HoleState.FILLED); }
-//
-//	boolean isFilled() { return getState() == HoleState.FILLED; }
-//
-//	boolean canBeFilled() { return getState() == HoleState.SEEDED; }
-//}
 
 class Student extends Thread {
     TA ta;
@@ -68,11 +49,17 @@ class Student extends Thread {
     }
 
     public void run() {
+
+        StringBuilder msg = new StringBuilder();
+
         while (true) {
 
-            System.out.println("Student: Must wait for TA " + ta.getMAX() + " holes ahead");
-
             try {
+                msg.setLength(0);
+                msg.append("Student: I can still dig " );
+                msg.append(ta.getMAX() - (ta.getHoleDug() - ta.getHoleFilled()));
+                msg.append(" holes.");
+                System.out.println(msg);
                 ta.canDig.acquire();
                 // Can dig a hole - lets get the shovel
                 ta.shovel.acquire();
@@ -96,7 +83,10 @@ class Student extends Thread {
             ta.shovel.release();
             ta.readyToPlant.release();
 
-            if (isInterrupted()) break;
+            if (isInterrupted()) {
+                System.out.println("Student: I think I'll stop here.");
+                break;
+            }
         }
         System.out.println("Student is done");
     }
@@ -137,23 +127,41 @@ class TA extends Thread {
         return (holePlantedNum);
     }
 
+    public void incrHoleFilled() {
+        holeFilledNum++;
+    }
+
+    public int getHoleFilled() {
+        return (holeFilledNum);
+    }
+
     public TA() {
         // Initialise things here
     }
 
     public void run() {
         while (true) {
-            System.out.println("TA: Got the shovel");
+
             try {
+                // There's a hole to be filled
+                readyToFill.acquire();
+                // get the shovel
+                shovel.acquire();
+                System.out.println("TA: Got the shovel");
                 sleep((int) (100 * Math.random()));
             } catch (Exception e) {
+                System.out.println(e);
                 break;
             } // Time to fill hole
             holeFilledNum++;  // hole filled - increment the number
             System.out.println("TA: The hole " + holeFilledNum + " has been filled");
+            canDig.release();
             System.out.println("TA: Letting go of the shovel");
-
-            if (isInterrupted()) break;
+            shovel.release();
+            if (isInterrupted()) {
+                System.out.println("TA: I think I'll stop here.");
+                break;
+            }
         }
         System.out.println("TA is done");
     }
@@ -170,14 +178,22 @@ class Professor extends Thread {
         while (ta.getHolePlanted() <= 20) {
 
             try {
+                ta.readyToPlant.acquire();
                 sleep((int) (50 * Math.random()));
-            } catch (Exception e) {
+            } catch (InterruptedException e) {
+                System.out.println("Professor: I guess I'll stop here");
                 break;
-            } // Time to plant
+            }
+            catch (Exception e) {
+                System.out.println(e);
+                 }
+            // Time to plant
+
             ta.incrHolePlanted();  // the seed is planted - increment the number
             System.out.println("Professor: All be advised that I have completed planting hole " +
                     ta.getHolePlanted());
+            ta.readyToFill.release();
         }
-        System.out.println("Professeur: We have worked enough for today");
+        System.out.println("Professor: We have worked enough for today");
     }
 }
